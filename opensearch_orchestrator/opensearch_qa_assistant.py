@@ -13,7 +13,7 @@ if __package__ in {None, ""}:
         sys.path.insert(0, _SCRIPT_EXECUTION_PROJECT_ROOT)
 
 from opensearch_orchestrator.scripts.handler import ThinkingCallbackHandler
-from opensearch_orchestrator.scripts.tools import read_knowledge_base, read_dense_vector_models, read_sparse_vector_models, search_opensearch_org
+from opensearch_orchestrator.scripts.tools import read_knowledge_base, read_dense_vector_models, read_sparse_vector_models, read_agentic_search_guide, search_opensearch_org
 
 # -------------------------------------------------------------------------
 # System Prompt
@@ -23,12 +23,12 @@ SYSTEM_PROMPT = """
 # OpenSearch QA Assistant
 
 You are an OpenSearch QA assistant.
-Your goal is to answer questions related to OpenSearch semantic search.
+Your goal is to answer questions related to OpenSearch semantic search and agentic search.
 
 ## Responsibilities
 
 1. **Understand the Question**
-2. **Consult the Knowledge Base**: Use `read_knowledge_base`, `read_dense_vector_models`, or `read_sparse_vector_models` to check for specific details based on the topic.
+2. **Consult the Knowledge Base**: Use `read_knowledge_base`, `read_dense_vector_models`, `read_sparse_vector_models`, or `read_agentic_search_guide` to check for specific details based on the topic.
 3. **Use Live Docs Search When Needed**: Use `search_opensearch_org` for the latest public docs on opensearch.org.
 4. **Provide the Answer**: Offer a brief answer based on available tool evidence.
 
@@ -56,7 +56,7 @@ model = BedrockModel(
 agent = Agent(
     model=model, 
     system_prompt=SYSTEM_PROMPT,
-    tools=[read_knowledge_base, read_dense_vector_models, read_sparse_vector_models, search_opensearch_org],
+    tools=[read_knowledge_base, read_dense_vector_models, read_sparse_vector_models, read_agentic_search_guide, search_opensearch_org],
     callback_handler=ThinkingCallbackHandler(output_color="\033[96m") # Cyan output for follow-up
 )
 
