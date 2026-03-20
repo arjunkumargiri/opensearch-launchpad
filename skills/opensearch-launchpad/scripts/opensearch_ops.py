@@ -28,6 +28,7 @@ Commands:
     deploy-agentic-model   Deploy a Bedrock Claude model for agentic search
     create-flow-agent      Create a flow agent for agentic search
     create-agentic-pipeline Create and attach an agentic search pipeline
+    search-docs            Search documentation via DuckDuckGo (default: opensearch.org)
 """
 
 import argparse
@@ -197,6 +198,69 @@ def cmd_deploy_agentic_model(args):
     print(result)
 
 
+def cmd_search_docs(args):
+    """Search documentation via DuckDuckGo with site restriction."""
+    import re as _re
+    from html import unescape
+    from urllib.parse import parse_qs, quote_plus, urlparse
+    from urllib.request import Request, urlopen
+
+    def _strip_html(text):
+        return _re.sub(r"<[^>]+>", "", text)
+
+    def _normalize_text(text):
+        return _re.sub(r"\s+", " ", text).strip()
+
+    def _decode_redirect(url):
+        parsed = urlparse(url)
+        if parsed.netloc.endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
+            target = parse_qs(parsed.query).get("uddg", [None])[0]
+            if target:
+                return target
+        return url
+
+    try:
+        query = args.query
+        site = args.site
+        limit = max(1, min(args.count, 10))
+        site_prefix = f"site:{site} " if site else ""
+        search_query = quote_plus(f"{site_prefix}{query}")
+        url = f"https://duckduckgo.com/html/?q={search_query}"
+        req = Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; OpenSearchSkill/1.0)"})
+
+        with urlopen(req, timeout=15) as resp:
+            html = resp.read().decode("utf-8", errors="ignore")
+
+        titles = _re.findall(
+            r'<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>',
+            html, flags=_re.IGNORECASE | _re.DOTALL,
+        )
+        snippets_raw = _re.findall(
+            r'<a[^>]*class="result__snippet"[^>]*>(.*?)</a>|'
+            r'<div[^>]*class="result__snippet"[^>]*>(.*?)</div>',
+            html, flags=_re.IGNORECASE | _re.DOTALL,
+        )
+        snippets = [left or right for left, right in snippets_raw]
+
+        filter_domain = site.lower() if site else None
+        results = []
+        for idx, (raw_href, raw_title) in enumerate(titles):
+            href = _decode_redirect(unescape(raw_href))
+            if filter_domain and filter_domain not in urlparse(href).netloc.lower():
+                continue
+            title = _normalize_text(unescape(_strip_html(raw_title)))
+            snippet = ""
+            if idx < len(snippets):
+                snippet = _normalize_text(unescape(_strip_html(snippets[idx])))
+            results.append({"title": title, "url": href, "snippet": snippet})
+            if len(results) >= limit:
+                break
+
+        print(json.dumps({"query": query, "site": site, "results": results}, ensure_ascii=False, indent=2))
+    except Exception as e:
+        print(json.dumps({"query": args.query, "site": args.site, "results": [], "error": str(e)}))
+
+
 def cmd_create_flow_agent(args):
     from lib.operations import create_flow_agent
     print(create_flow_agent(args.name, args.model_id))
@@ -296,6 +360,12 @@ def main():
     p.add_argument("--name", required=True)
     p.add_argument("--model-id", required=True)
 
+    # search-docs
+    p = sub.add_parser("search-docs", help="Search documentation via DuckDuckGo")
+    p.add_argument("--query", required=True, help="Search query")
+    p.add_argument("--site", default="opensearch.org", help="Site to restrict search to (default: opensearch.org)")
+    p.add_argument("--count", type=int, default=5, help="Max results (1-10)")
+
     # create-agentic-pipeline
     p = sub.add_parser("create-agentic-pipeline", help="Create agentic search pipeline")
     p.add_argument("--name", required=True)
@@ -321,6 +391,7 @@ def main():
         "deploy-agentic-model": cmd_deploy_agentic_model,
         "create-flow-agent": cmd_create_flow_agent,
         "create-agentic-pipeline": cmd_create_agentic_pipeline,
+        "search-docs": cmd_search_docs,
     }
 
     fn = dispatch.get(args.command)
